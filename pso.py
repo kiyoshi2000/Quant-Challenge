@@ -3,84 +3,17 @@ import numpy as np
 import random
 import pandas as pd
 import matplotlib.pyplot as plt
-
-
-# Função de fitness baseada no Sharpe Ratio
-class FitnessEvaluator:
-    def __init__(self, data, risk_free_rate=0.02):
-        self.data = data
-        self.risk_free_rate = risk_free_rate
-
-    def calculate_sharpe_ratio(self, chromosome):
-        """Calcula o Sharpe Ratio para um portfólio."""
-        portfolio_returns = np.dot(self.data.pct_change().dropna(), chromosome)
-        std_dev = np.std(portfolio_returns)
-        if std_dev == 0:
-            return 0
-        sharpe_ratio = (np.mean(portfolio_returns) - self.risk_free_rate) / std_dev
-        return sharpe_ratio
-
-
-# Algoritmo Genético (GA)
-class GeneticAlgorithm:
-    def __init__(self, population, fitness_evaluator, mutation_rate=0.01):
-        self.population = population
-        self.fitness_evaluator = fitness_evaluator
-        self.mutation_rate = mutation_rate
-
-    def calculate_fitness(self, chromosome):
-        return self.fitness_evaluator.calculate_sharpe_ratio(chromosome)
-
-    def roulette_wheel_selection(self, fitness_values):
-        """Seleciona um indivíduo da população baseado no fitness."""
-        min_fitness = min(fitness_values)
-        if min_fitness < 0:
-            fitness_values = [f - min_fitness + 1e-6 for f in fitness_values]
-
-        total_fitness = sum(fitness_values)
-        pick = random.uniform(0, total_fitness)
-        current = 0
-        for i, fitness in enumerate(fitness_values):
-            current += fitness
-            if current > pick:
-                return self.population[i]
-
-    def single_point_crossover(self, parent1, parent2):
-        """Realiza um crossover entre dois pais."""
-        crossover_point = random.randint(1, len(parent1) - 1)
-        child1 = np.concatenate((parent1[:crossover_point], parent2[crossover_point:]))
-        child2 = np.concatenate((parent2[:crossover_point], parent1[crossover_point:]))
-        return child1, child2
-
-    def mutation(self, chromosome):
-        """Realiza mutação em um cromossomo."""
-        for i in range(len(chromosome)):
-            if random.random() < self.mutation_rate:
-                chromosome[i] = random.uniform(0, 1)
-        return chromosome / np.sum(chromosome)
-
-    def evolve(self):
-        """Evolui a população por seleção, crossover e mutação."""
-        fitness_values = [self.calculate_fitness(chromosome) for chromosome in self.population]
-        new_population = []
-        for _ in range(len(self.population) // 2):
-            parent1 = self.roulette_wheel_selection(fitness_values)
-            parent2 = self.roulette_wheel_selection(fitness_values)
-            child1, child2 = self.single_point_crossover(parent1, parent2)
-            child1 = self.mutation(child1)
-            child2 = self.mutation(child2)
-            new_population.extend([child1, child2])
-        self.population = new_population
-
+from datetime import timedelta
+# Value at Risk (VaR)
+from scipy.stats import norm
 
 # Algoritmo PSO
 class PSO:
-    def __init__(self, num_particles, num_assets, fitness_evaluator, max_iter=100, w=0.5, c1=1.5, c2=1.5):
-        self.fitness_evaluator = fitness_evaluator
+    def __init__(self, num_particles, num_assets, max_iter=200, w=0.7, c1=1.7, c2=2):
         self.num_particles = num_particles
         self.particles = [self.Particle(num_assets) for _ in range(num_particles)]
         self.global_best_position = self.particles[0].position
-        self.global_best_fitness = self.fitness_evaluator.calculate_sharpe_ratio(self.global_best_position)
+        self.global_best_fitness = -np.inf  # Inicializa com o pior valor possível
         self.max_iter = max_iter
         self.w = w
         self.c1 = c1
@@ -89,15 +22,30 @@ class PSO:
     class Particle:
         def __init__(self, num_assets):
             self.position = np.random.random(num_assets)
-            self.position /= np.sum(self.position)
+            self.position /= np.sum(self.position)  # Normaliza as posições para somarem 1
             self.velocity = np.zeros(num_assets)
             self.best_position = np.copy(self.position)
             self.best_fitness = -np.inf
 
-    def optimize(self):
+    def sharpe_ratio(self, weights, returns, cov_matrix, prev_weights, risk_free_rate=0.02):
+        annualized_return = np.sum(weights * returns.mean()) * 252
+        annualized_cov_matrix = cov_matrix * 252
+        portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(annualized_cov_matrix, weights)))
+        sharpe_ratio = (annualized_return - risk_free_rate) / portfolio_risk
+
+        # Penalizar grandes mudanças nas alocações
+        if prev_weights is not None:
+            penalty = np.sum(np.abs(weights - prev_weights))  # Soma das diferenças absolutas entre alocações
+            sharpe_ratio -= penalty * 0.01  # Ajuste o multiplicador conforme necessário
+
+        return sharpe_ratio
+
+    def optimize(self, returns, cov_matrix, prev_weights=None):
         for _ in range(self.max_iter):
             for particle in self.particles:
-                fitness = self.fitness_evaluator.calculate_sharpe_ratio(particle.position)
+                # Calcula o Sharpe Ratio com penalização para grandes variações
+                fitness = self.sharpe_ratio(particle.position, returns, cov_matrix, prev_weights)
+
                 if fitness > particle.best_fitness:
                     particle.best_fitness = fitness
                     particle.best_position = np.copy(particle.position)
@@ -106,28 +54,26 @@ class PSO:
                     self.global_best_fitness = fitness
                     self.global_best_position = np.copy(particle.best_position)
 
+                # Atualiza a velocidade e a posição das partículas
                 inertia = self.w * particle.velocity
                 cognitive = self.c1 * random.random() * (particle.best_position - particle.position)
                 social = self.c2 * random.random() * (self.global_best_position - particle.position)
                 particle.velocity = inertia + cognitive + social
                 particle.position += particle.velocity
-                particle.position = np.clip(particle.position, 0, 1)
+
+                # Impor restrições de variação
+                if prev_weights is not None:
+                    particle.position = np.clip(particle.position, prev_weights - 0.1, prev_weights + 0.1)  # Limitar a mudança para 10%
+
+                particle.position = np.clip(particle.position, 0, 1)  # Allow weights between 0% and 100%  # Limitar cada ativo entre 5% e 50%
+                # Normalize first
                 particle.position /= np.sum(particle.position)
+                # Then clip
+                particle.position = np.clip(particle.position, 0, 1)
+                # Re-normalize if necessary
+                particle.position /= np.sum(particle.position)
+
         return self.global_best_position
-
-
-# Gerar a população para GA
-class PortfolioGenerator:
-    def __init__(self, tickers, population_size):
-        self.tickers = tickers
-        self.population_size = population_size
-
-    def generate_chromosome(self):
-        weights = np.random.random(len(self.tickers))
-        return weights / np.sum(weights)
-
-    def create_population(self):
-        return [self.generate_chromosome() for _ in range(self.population_size)]
 
 # Função para calcular o retorno esperado do portfólio
 def calculate_portfolio_return(weights, returns):
@@ -141,9 +87,99 @@ def calculate_portfolio_risk(weights, cov_matrix):
 def calculate_sharpe_ratio(portfolio_return, portfolio_risk, risk_free_rate=0.02):
     return (portfolio_return - risk_free_rate) / portfolio_risk
 
+# Função de backtest com o PSO
+def backtest_pso(data, tickers, start_date, end_date, rebalance_period='3ME'):
+    results = []
+    portfolio_allocations = []
+    prev_weights = None  # Inicialmente, não há pesos anteriores
+
+    # Converte o índice de data para formato de datetime
+    data = data.loc[start_date:end_date]
+    data.index = data.index.tz_localize(None)
+
+    # Inicializando a data de rebalanceamento
+    rebalance_dates = pd.date_range(start=start_date, end=end_date, freq=rebalance_period)
+
+    for date in rebalance_dates:
+        # Usar apenas dados anteriores à data de rebalanceamento
+        historical_data = data[data.index <= date]
+
+        # Calcular retornos e matriz de covariância
+        returns = historical_data.pct_change().dropna()
+        cov_matrix = returns.cov()
+
+        # Algoritmo PSO, usando prev_weights para suavizar as alocações
+        pso = PSO(num_particles=30, num_assets=len(tickers))
+        best_pso_allocation = pso.optimize(returns=returns, cov_matrix=cov_matrix, prev_weights=prev_weights)
+
+        # Armazena a alocação de portfólio e a data
+        portfolio_allocations.append((date, best_pso_allocation))
+
+        # Calcular o retorno do portfólio no período subsequente
+        future_data = data[(data.index > date) & (data.index <= date + timedelta(days=90))]
+        future_returns = future_data.pct_change().dropna().mean()
+        portfolio_return = np.dot(best_pso_allocation, future_returns)
+
+        # Armazena o retorno e a data
+        results.append((date, portfolio_return))
+
+        # Atualiza prev_weights para o próximo período
+        prev_weights = best_pso_allocation
+
+    return pd.DataFrame(results, columns=['Date', 'Portfolio Return']), pd.DataFrame(portfolio_allocations, columns=['Date', 'Allocation'])
+def plot_portfolio_allocations(portfolio_allocations, tickers):
+    # Converter as alocações em um DataFrame separado por colunas (uma para cada ativo)
+    allocations_df = pd.DataFrame(
+        portfolio_allocations['Allocation'].to_list(), 
+        columns=tickers, 
+        index=portfolio_allocations['Date']
+    )
+
+    # Plotar as alocações ao longo do tempo
+    plt.figure(figsize=(10, 6))
+    
+    for ticker in tickers:
+        plt.plot(allocations_df.index, allocations_df[ticker], label=ticker)
+
+    plt.title('Pesos do Portfólio ao Longo do Tempo')
+    plt.xlabel('Data')
+    plt.ylabel('Alocação (%)')
+    plt.legend(loc='upper right')
+    plt.grid(True)
+    plt.show()
+
+# Máximo Drawdown
+def calculate_max_drawdown(cumulative_returns):
+    cumulative_max = cumulative_returns.cummax()
+    drawdown = (cumulative_returns - cumulative_max) / cumulative_max
+    max_drawdown = drawdown.min()
+    return max_drawdown
+
+def calculate_var(returns, confidence_level=0.95):
+    mean = returns.mean()
+    std_dev = returns.std()
+    var = norm.ppf(1 - confidence_level, mean, std_dev)
+    return var
+
+# Retornos Anualizados e Sharpe Ratios
+def calculate_annualized_return(daily_returns):
+    return (1 + daily_returns.mean()) ** 252 - 1
+
+# Sortino Ratios
+def calculate_sortino_ratio(returns, risk_free_rate=0.02):
+    # Retorno anualizado
+    annual_return = calculate_annualized_return(returns)
+    # Desvio padrão dos retornos negativos
+    downside_returns = returns[returns < 0]
+    expected_downside = (downside_returns ** 2).mean()
+    downside_deviation = np.sqrt(expected_downside) * np.sqrt(252)
+    # Sortino Ratio
+    sortino_ratio = (annual_return - risk_free_rate) / downside_deviation
+    return sortino_ratio
+
 if __name__ == "__main__":
     # Definir os parâmetros
-    tickers = ['NVDA', 'BRK-B', 'C', 'JPM']
+    tickers = ['NVDA', 'BRK-B', 'C', 'JPM', 'AAPL', 'GOOG', 'MSFT', 'AMZN', 'TSLA', 'JNJ']
     start_date = '2020-01-01'
     end_date = '2024-04-30'
     population_size = 50
@@ -152,47 +188,86 @@ if __name__ == "__main__":
     # Baixar os dados
     data = yf.download(tickers, start=start_date, end=end_date)['Adj Close']
 
-    # Inicializar o avaliador de fitness com os dados
-    fitness_evaluator = FitnessEvaluator(data)
+    # Executar o backtest com PSO e recalcular o portfólio a cada 3 meses
+    portfolio_returns, portfolio_allocations = backtest_pso(data, tickers, start_date, end_date, rebalance_period='3M')
 
-    # Gerar a população para o algoritmo genético
-    portfolio_generator = PortfolioGenerator(tickers, population_size)
-    population = portfolio_generator.create_population()
+    print("Retornos do Portfólio ao longo do tempo:")
+    print(portfolio_returns)
 
-    # Algoritmo Genético (GA)
-    ga = GeneticAlgorithm(population, fitness_evaluator)
-    for _ in range(100):  # Evoluir por 100 gerações
-        ga.evolve()
+    print("\nAlocações do Portfólio ao longo do tempo:")
+    print(portfolio_allocations)
 
-    best_ga_allocation = ga.population[0]
-    print("Melhor portfólio do GA:", best_ga_allocation)
+    # Plotar os retornos ao longo do tempo
+    plt.plot(portfolio_returns['Date'], portfolio_returns['Portfolio Return'])
+    plt.title('Retornos do Portfólio PSO ao longo do tempo')
+    plt.xlabel('Data')
+    plt.ylabel('Retorno')
+    plt.show()
 
-    # Algoritmo PSO
-    pso = PSO(num_particles=30, num_assets=len(tickers), fitness_evaluator=fitness_evaluator)
-    best_pso_allocation = pso.optimize()
-    print("Melhor portfólio do PSO:", best_pso_allocation)
+    # Chamando a função para plotar os pesos do portfólio ao longo do tempo
+    plot_portfolio_allocations(portfolio_allocations, tickers)
 
-    # Exibir as alocações
-    allocation_df = pd.DataFrame({
-        'Tickers': tickers,
-        'GA Allocation': best_ga_allocation,
-        'PSO Allocation': best_pso_allocation
-    })
-    print("\nComparação de Alocações:")
-    print(allocation_df)
+    # 1. Baixar os dados do S&P 500
+    benchmark_data = yf.download('^GSPC', start=start_date, end=end_date)['Adj Close']
 
-    # Usar dados simulados para calcular retornos e covariância
-    returns = data.pct_change().dropna()  # Calcula os retornos diários
-    cov_matrix = returns.cov()  # Matriz de covariância dos retornos
+    # 2. Calcular os retornos cumulativos
+    # Retornos cumulativos do portfólio
+    portfolio_cumulative_returns = (1 + portfolio_returns['Portfolio Return']).cumprod()
 
-    # Calcular retorno esperado e risco para o portfólio do GA
-    ga_portfolio_return = calculate_portfolio_return(best_ga_allocation, returns)
-    ga_portfolio_risk = calculate_portfolio_risk(best_ga_allocation, cov_matrix)
-    ga_sharpe_ratio = calculate_sharpe_ratio(ga_portfolio_return, ga_portfolio_risk)
+    # Retornos do benchmark e retornos cumulativos
+    benchmark_returns = benchmark_data.pct_change().dropna()
+    benchmark_cumulative_returns = (1 + benchmark_returns).cumprod()
 
-    # Calcular retorno esperado e risco para o portfólio do PSO
-    pso_portfolio_return = calculate_portfolio_return(best_pso_allocation, returns)
-    pso_portfolio_risk = calculate_portfolio_risk(best_pso_allocation, cov_matrix)
-    pso_sharpe_ratio = calculate_sharpe_ratio(pso_portfolio_return, pso_portfolio_risk)
+    # 3. Alinhar as datas
+    combined_returns = pd.DataFrame({
+        'Portfolio': portfolio_cumulative_returns.values,
+        'Benchmark': benchmark_cumulative_returns.reindex(portfolio_returns['Date']).values
+    }, index=portfolio_returns['Date'])
 
-    print(ga_portfolio_return, ga_portfolio_risk, ga_sharpe_ratio, pso_portfolio_return, pso_portfolio_risk, pso_sharpe_ratio)
+    # 4. Plotar os retornos cumulativos
+    plt.figure(figsize=(12, 6))
+    plt.plot(combined_returns.index, combined_returns['Portfolio'], label='Portfólio')
+    plt.plot(combined_returns.index, combined_returns['Benchmark'], label='S&P 500')
+    plt.title('Retornos Cumulativos: Portfólio vs S&P 500')
+    plt.xlabel('Data')
+    plt.ylabel('Retorno Cumulativo')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # 5. Análise de Risco
+    # Volatilidade anualizada do portfólio
+    portfolio_volatility = portfolio_returns['Portfolio Return'].std() * np.sqrt(252)
+    print(f"Volatilidade Anualizada do Portfólio: {portfolio_volatility:.2%}")
+
+    # Volatilidade anualizada do benchmark
+    benchmark_volatility = benchmark_returns.std() * np.sqrt(252)
+    print(f"Volatilidade Anualizada do S&P 500: {benchmark_volatility:.2%}")
+
+    portfolio_max_drawdown = calculate_max_drawdown(portfolio_cumulative_returns)
+    print(f"Máximo Drawdown do Portfólio: {portfolio_max_drawdown:.2%}")
+
+    benchmark_max_drawdown = calculate_max_drawdown(benchmark_cumulative_returns)
+    print(f"Máximo Drawdown do S&P 500: {benchmark_max_drawdown:.2%}")
+
+    portfolio_var = calculate_var(portfolio_returns['Portfolio Return'])
+    print(f"VaR do Portfólio (95% de confiança): {portfolio_var:.2%}")
+
+    benchmark_var = calculate_var(benchmark_returns)
+    print(f"VaR do S&P 500 (95% de confiança): {benchmark_var:.2%}")
+
+    portfolio_annual_return = calculate_annualized_return(portfolio_returns['Portfolio Return'])
+    portfolio_sharpe_ratio = (portfolio_annual_return - 0.02) / portfolio_volatility
+    print(f"Retorno Anualizado do Portfólio: {portfolio_annual_return:.2%}")
+    print(f"Sharpe Ratio do Portfólio: {portfolio_sharpe_ratio:.2f}")
+
+    benchmark_annual_return = calculate_annualized_return(benchmark_returns)
+    benchmark_sharpe_ratio = (benchmark_annual_return - 0.02) / benchmark_volatility
+    print(f"Retorno Anualizado do S&P 500: {benchmark_annual_return:.2%}")
+    print(f"Sharpe Ratio do S&P 500: {benchmark_sharpe_ratio:.2f}")
+
+    portfolio_sortino_ratio = calculate_sortino_ratio(portfolio_returns['Portfolio Return'])
+    print(f"Sortino Ratio do Portfólio: {portfolio_sortino_ratio:.2f}")
+
+    benchmark_sortino_ratio = calculate_sortino_ratio(benchmark_returns)
+    print(f"Sortino Ratio do S&P 500: {benchmark_sortino_ratio:.2f}")

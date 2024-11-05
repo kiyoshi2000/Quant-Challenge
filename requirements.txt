@@ -1,4 +1,4 @@
-yfinanceappdirs==1.4.4
+# yfinanceappdirs==1.4.4
 appnope==0.1.4
 asttokens==2.4.1
 backoff==2.2.1
