@@ -6,11 +6,12 @@ import matplotlib.pyplot as plt
 from datetime import timedelta
 from scipy.stats import norm
 
-MAX_ACCEPTABLE_RISK = 0.15
+MAX_ACCEPTABLE_RISK = 0.1
+MAX_ACCEPTABLE_DRAWDOWN = -0.2 
 
 # Particle Swarm Optimization (PSO) Algorithm
 class PSO:
-    def __init__(self, num_particles, num_assets, max_iter=200, w=0.7, c1=1.7, c2=2):
+    def __init__(self, num_assets, num_particles=50, max_iter=200, w=0.5, c1=1.5, c2=1.5):
         self.num_particles = num_particles  # Number of particles in the swarm
         self.particles = [self.Particle(num_assets) for _ in range(num_particles)]  # List of particles
         self.global_best_position = self.particles[0].position  # Global best position (best solution found)
@@ -29,10 +30,6 @@ class PSO:
             self.best_fitness = -np.inf                   # Particle's best known fitness
 
     def fitness_function(self, weights, returns, cov_matrix, prev_weights, risk_free_rate=0.02):
-        """
-        Calculate the fitness of a particle (portfolio allocation).
-        Includes penalties for large allocation changes and exceeding risk limits.
-        """
         # Annualized expected return
         annualized_return = np.sum(weights * returns.mean()) * 252
 
@@ -45,21 +42,32 @@ class PSO:
         # Calculate Sharpe Ratio
         sharpe_ratio = (annualized_return - risk_free_rate) / portfolio_risk
 
-        # Penalize large changes in allocations (optional)
-        penalty_allocation_change = 0
-        if prev_weights is not None:
-            # Sum of absolute differences between current and previous weights
-            penalty_allocation_change = np.sum(np.abs(weights - prev_weights)) * 0.01  # Adjust multiplier as needed
+        # Penalize large changes in allocations
+        # penalty_allocation_change = 0
+        # if prev_weights is not None:
+        #     penalty_allocation_change = np.sum(np.abs(weights - prev_weights)) * 0.01
 
         # Penalize if portfolio risk exceeds maximum acceptable risk
         penalty_risk = 0
-        MAX_ACCEPTABLE_RISK = 0.15  # Example: 15% annualized volatility
+        MAX_ACCEPTABLE_RISK = 0.10 
         if portfolio_risk > MAX_ACCEPTABLE_RISK:
-            # Penalty proportional to the excess risk
-            penalty_risk = (portfolio_risk - MAX_ACCEPTABLE_RISK) * 100  # Adjust multiplier as needed
+            penalty_risk = (portfolio_risk - MAX_ACCEPTABLE_RISK) * 100
+
+        # Calculate maximum drawdown
+        portfolio_returns = returns.dot(weights)
+        cumulative_returns = (1 + portfolio_returns).cumprod()
+        peak = cumulative_returns.expanding(min_periods=1).max()
+        drawdown = (cumulative_returns - peak) / peak
+        max_drawdown = drawdown.min()
+
+        # Penalize high maximum drawdown
+        penalty_drawdown = 0
+        MAX_ACCEPTABLE_DRAWDOWN = -0.15 
+        if max_drawdown < MAX_ACCEPTABLE_DRAWDOWN:
+            penalty_drawdown = abs(max_drawdown - MAX_ACCEPTABLE_DRAWDOWN) * 100
 
         # Total penalty
-        total_penalty = penalty_allocation_change + penalty_risk
+        total_penalty = penalty_risk + penalty_drawdown
 
         # Adjusted fitness value
         adjusted_fitness = sharpe_ratio - total_penalty

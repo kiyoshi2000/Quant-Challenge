@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.stats import norm
 
+
 # Function to update holdings after transactions
 def update_holdings(shares_held, purchase_price, shares_change, current_price):
     """
@@ -38,6 +39,32 @@ def update_holdings(shares_held, purchase_price, shares_change, current_price):
         new_purchase_price = purchase_price
 
     return new_shares_held, new_purchase_price
+
+def update_holdings_and_prices(prev_weights, current_weights, prices, shares_held, purchase_prices):
+    """
+    Update holdings and purchase prices after rebalancing.
+    """
+    portfolio_value = sum(shares_held[ticker] * prices[ticker] for ticker in prices.index)
+    desired_values = current_weights * portfolio_value
+    desired_shares = desired_values / prices
+    shares_diff = desired_shares - np.array([shares_held[ticker] for ticker in prices.index])
+    shares_diff = pd.Series(shares_diff, index=prices.index)  # Convert to Series for consistent indexing
+
+    for i in range(len(prices.index)):
+        ticker = prices.index[i]
+        shares_change = shares_diff.iloc[i]
+        current_price = prices[ticker]
+        purchase_price = purchase_prices[ticker]
+        shares_current = shares_held[ticker]
+
+        # Update holdings and purchase price
+        new_shares_held, new_purchase_price = update_holdings(
+            shares_current, purchase_price, shares_change, current_price
+        )
+        shares_held[ticker] = new_shares_held
+        purchase_prices[ticker] = new_purchase_price
+
+    return shares_held, purchase_prices
 
 # Function to calculate transaction costs
 def calculate_transaction_costs(shares_change):
@@ -75,6 +102,47 @@ def calculate_capital_gains_tax(shares_sold, sale_price, purchase_price, tax_rat
     # Tax liability is zero if there is a capital loss
     tax_liability = capital_gain * tax_rate if capital_gain > 0 else 0
     return tax_liability
+
+def calculate_transaction_costs_and_taxes(prev_weights, current_weights, prices, portfolio_value, shares_held, purchase_prices):
+    """
+    Calculate transaction costs and tax liabilities when rebalancing the portfolio.
+    """
+    if prev_weights is None:
+        # No transaction costs or taxes on initial investment
+        transaction_costs = 0.0
+        tax_liability = 0.0
+    else:
+        # Calculate changes in holdings
+        desired_values = current_weights * portfolio_value
+        desired_shares = desired_values / prices
+        shares_diff = desired_shares - np.array([shares_held[ticker] for ticker in prices.index])
+        shares_diff = pd.Series(shares_diff, index=prices.index)  # Convert to Series for consistent indexing
+
+        # Transaction costs
+        commission_per_share = 0.005  # Commission per share in dollars
+        min_commission = 1.0          # Minimum commission per trade
+        transaction_costs = 0.0
+        tax_liability = 0.0
+
+        for i in range(len(prices.index)):
+            ticker = prices.index[i]
+            shares_change = shares_diff.iloc[i]
+            current_price = prices[ticker]
+            purchase_price = purchase_prices[ticker]
+            shares_current = shares_held[ticker]
+
+            # Calculate transaction cost
+            commission = max(commission_per_share * abs(shares_change), min_commission)
+            transaction_costs += commission
+
+            # Calculate tax liability if selling shares
+            if shares_change < 0:
+                shares_sold = -shares_change
+                tax_liability += calculate_capital_gains_tax(
+                    shares_sold, current_price, purchase_price
+                )
+
+    return transaction_costs, tax_liability
 
 # Function to calculate the portfolio return over a future period
 def calculate_portfolio_return(allocation, future_returns):
@@ -126,3 +194,42 @@ def calculate_max_drawdown(cumulative_returns):
     drawdown = cumulative_returns / cumulative_max - 1
     max_drawdown = drawdown.min()
     return max_drawdown
+
+def calculate_transaction_costs_and_taxes(prev_weights, current_weights, prices, portfolio_value, shares_held, purchase_prices):
+    """
+    Calculate transaction costs and tax liabilities when rebalancing the portfolio.
+    """
+    if prev_weights is None:
+        # No transaction costs or taxes on initial investment
+        transaction_costs = 0.0
+        tax_liability = 0.0
+    else:
+        # Calculate changes in holdings
+        desired_values = current_weights * portfolio_value
+        desired_shares = desired_values / prices
+        shares_diff = desired_shares - np.array([shares_held[ticker] for ticker in prices.index])
+
+        # Transaction costs
+        commission_per_share = 0.005  # Commission per share in dollars
+        min_commission = 1.0          # Minimum commission per trade
+        transaction_costs = 0.0
+        tax_liability = 0.0
+
+        for i, ticker in enumerate(prices.index):
+            shares_change = shares_diff.iloc[i]
+            current_price = prices[ticker]
+            purchase_price = purchase_prices[ticker]
+            shares_current = shares_held[ticker]
+
+            # Calculate transaction cost
+            commission = max(commission_per_share * abs(shares_change), min_commission)
+            transaction_costs += commission
+
+            # Calculate tax liability if selling shares
+            if shares_change < 0:
+                shares_sold = -shares_change
+                tax_liability += calculate_capital_gains_tax(
+                    shares_sold, current_price, purchase_price
+                )
+
+    return transaction_costs, tax_liability
