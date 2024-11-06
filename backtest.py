@@ -1,109 +1,150 @@
 import pandas as pd
 from pso import *
-from outils import calculate_net_portfolio_return, calculate_transaction_costs, calculate_management_fees, adjust_for_inflation
+from outils import calculate_transaction_costs, calculate_portfolio_return, update_holdings, calculate_capital_gains_tax
+from pandas.tseries.offsets import BDay
 
-# Função de backtest com o PSO
-def backtest_pso(data, tickers, start_date, end_date, rebalance_period='3M', initial_investment=100000):
-    results = []
-    portfolio_allocations = []
-    prev_weights = None
-    shares_held = {ticker: 0 for ticker in tickers}
-    purchase_prices = {ticker: 0.0 for ticker in tickers}
-    portfolio_value = initial_investment
+# Backtesting function with PSO optimization
+def backtest_pso(data, tickers, start_date, end_date, rebalance_period='3ME', initial_investment=100000):
+    """
+    Perform backtesting of the portfolio using PSO optimization.
 
+    Parameters:
+    - data: DataFrame of historical adjusted closing prices.
+    - tickers: List of stock tickers.
+    - start_date: Start date of the backtest.
+    - end_date: End date of the backtest.
+    - rebalance_period: Frequency of rebalancing (e.g., '3M' for every 3 months).
+    - initial_investment: Initial amount of money invested.
+
+    Returns:
+    - results_df: DataFrame containing dates and portfolio returns.
+    - allocations_df: DataFrame containing dates and portfolio allocations.
+    """
+    results = []  # List to store portfolio returns over time
+    portfolio_allocations = []  # List to store portfolio allocations over time
+    prev_weights = None  # Previous portfolio weights
+    shares_held = {ticker: 0 for ticker in tickers}  # Number of shares held for each stock
+    purchase_prices = {ticker: 0.0 for ticker in tickers}  # Purchase price per share for each stock
+    portfolio_value = initial_investment  # Total value of the portfolio
+    cumulative_returns = []  # List to store cumulative returns
+
+    # Filter data for the backtest period and remove timezone information
     data = data.loc[start_date:end_date]
-    data.index = data.index.tz_localize(None)
+
+    # Generate rebalance dates
     rebalance_dates = pd.date_range(start=start_date, end=end_date, freq=rebalance_period)
 
     for date in rebalance_dates:
-        # Use data up to the rebalance date
-        historical_data = data[data.index <= date]
+
+        # Find the next business day
+        next_trading_day = date
+        next_trading_day = next_trading_day.tz_localize(None)
+
+        # Ensure the next trading day is in your data
+        while next_trading_day not in data.index and next_trading_day <= max(data.index):
+            next_trading_day += BDay(1)
+            next_trading_day = next_trading_day.tz_localize(None)
+
+        if next_trading_day > max(data.index): break
+            
+        # Use historical data up to the rebalance date
+        historical_data = data[data.index <= next_trading_day]
+        # Calculate daily returns
         returns = historical_data.pct_change().dropna()
+        # Calculate covariance matrix of returns
         cov_matrix = returns.cov()
 
-        # Optimize portfolio
+        # Optimize portfolio using PSO
         pso = PSO(num_particles=30, num_assets=len(tickers))
-        best_pso_allocation = pso.optimize(returns=returns, cov_matrix=cov_matrix, prev_weights=prev_weights)
+        best_pso_allocation = pso.optimize(returns=returns, cov_matrix=cov_matrix, prev_weights=prev_weights)            
 
-        # Current prices
-        prices = data.loc[date, tickers].values
+        # Current stock prices at rebalance date
+        prices = data.loc[next_trading_day, tickers].values
 
-        # Calculate portfolio value (sum of current holdings)
+        # Calculate current portfolio value based on existing holdings
         if prev_weights is not None:
             portfolio_value = sum(shares_held[ticker] * price for ticker, price in zip(tickers, prices))
         else:
             portfolio_value = initial_investment
 
-        # Calculate desired holdings based on new allocation
+        # Desired dollar value and number of shares for each stock based on new allocation
         desired_values = best_pso_allocation * portfolio_value
         desired_shares = desired_values / prices
 
-        # Calculate changes in holdings
+        # Calculate net period return
+        net_period_return = (portfolio_value / initial_investment) - 1
+
+        # Store cumulative return
+        cumulative_returns.append((date, portfolio_value))
+
+        # Calculate changes in holdings (number of shares to buy or sell)
         shares_diff = {}
         for i, ticker in enumerate(tickers):
             shares_diff[ticker] = desired_shares[i] - shares_held[ticker]
 
-        # Initialize variables for transaction costs and tax liability
+        # Initialize total transaction costs and tax liability for this rebalance
         transaction_costs = 0.0
         tax_liability = 0.0
 
-        # Process each stock
+        # Process each stock for buying or selling
         for i, ticker in enumerate(tickers):
-            shares_change = shares_diff[ticker]
-            if shares_change > 0:
-                # Buying shares
-                # Update the average purchase price
-                total_cost_existing = purchase_prices[ticker] * shares_held[ticker]
-                total_cost_new = prices[i] * shares_change
-                total_shares = shares_held[ticker] + shares_change
-                if total_shares > 0:
-                    purchase_prices[ticker] = (total_cost_existing + total_cost_new) / total_shares
-                else:
-                    purchase_prices[ticker] = 0.0
-            elif shares_change < 0:
-                # Selling shares
-                shares_sold = -shares_change
-                sale_proceeds = shares_sold * prices[i]
-                cost_basis = shares_sold * purchase_prices[ticker]
-                capital_gain = sale_proceeds - cost_basis
-                # Calculate tax liability (assuming short-term capital gains tax rate of 25%)
-                tax_liability += capital_gain * 0.25
-                # Update holdings
-                if shares_held[ticker] - shares_sold >= 0:
-                    shares_held[ticker] -= shares_sold
-                else:
-                    shares_held[ticker] = 0
-            # Update holdings after transactions
-            shares_held[ticker] += shares_change
+            shares_change = shares_diff[ticker]  # Number of shares to buy (>0) or sell (<0)
+            current_price = prices[i]            # Current price per share
+            purchase_price = purchase_prices[ticker]  # Average purchase price per share
+            shares_current = shares_held[ticker]      # Current number of shares held
 
-            # Calculate transaction costs (assuming $0.005 per share, min $1 per trade)
-            commission = max(0.005 * abs(shares_change), 1.0)
-            transaction_costs += commission
+            # Update holdings and purchase price
+            new_shares_held, new_purchase_price = update_holdings(
+                shares_current, purchase_price, shares_change, current_price
+            )
+            shares_held[ticker] = new_shares_held
+            purchase_prices[ticker] = new_purchase_price
 
-        # Calculate net portfolio return
-        future_data = data[(data.index > date) & (data.index <= date + pd.DateOffset(months=3))]
+            # Calculate transaction costs for this trade
+            transaction_costs += calculate_transaction_costs(shares_change)
+
+            # Calculate tax liability if selling shares
+            if shares_change < 0:
+                shares_sold = -shares_change  # Number of shares sold
+                tax_liability += calculate_capital_gains_tax(
+                    shares_sold, current_price, purchase_price
+                )
+
+        # Calculate portfolio return over the next period
+        future_data = data[(data.index > next_trading_day) & (data.index <= next_trading_day + pd.DateOffset(months=3))]
         future_returns = future_data.pct_change().dropna()
-        # Calculate portfolio return over the period
-        period_return = np.dot(best_pso_allocation, future_returns.mean()) * len(future_returns)
 
-        # Update portfolio value
+        # Handle cases where future returns might be empty
+        if future_returns.empty:
+            print(f"No future returns data available after {next_trading_day}. Ending backtest.")
+            break
+
+        # Calculate the portfolio return over the period
+        period_return = calculate_portfolio_return(best_pso_allocation, future_returns)
+
+        # Update portfolio value with the period return
         portfolio_value *= (1 + period_return)
-        # Subtract transaction costs and taxes
+        # Subtract transaction costs and tax liabilities from portfolio value
         portfolio_value -= (transaction_costs + tax_liability)
-        # Calculate net period return
+        # Calculate net period return relative to initial investment
         net_period_return = (portfolio_value / initial_investment) - 1
 
-        # Store results
-        results.append((date, net_period_return))
-        portfolio_allocations.append((date, best_pso_allocation))
+        # Store the results
+        results.append((next_trading_day, net_period_return))
+        portfolio_allocations.append((next_trading_day, best_pso_allocation))
 
+        # Update previous weights for next iteration
         prev_weights = best_pso_allocation
+    
+    # Return cumulative returns as a DataFrame
+    cumulative_returns_df = pd.DataFrame(cumulative_returns, columns=['Date', 'Portfolio Value'])
+    cumulative_returns_df.set_index('Date', inplace=True)
 
-    print("Final Holdings:")
-    for ticker in tickers:
-        print(f"{ticker}: {shares_held[ticker]:.2f} shares at ${purchase_prices[ticker]:.2f} per share")
+    # Create DataFrames from results
+    results_df = pd.DataFrame(results, columns=['Date', 'Portfolio Return'])
+    allocations_df = pd.DataFrame(portfolio_allocations, columns=['Date', 'Allocation'])
 
-    return pd.DataFrame(results, columns=['Date', 'Portfolio Return']), pd.DataFrame(portfolio_allocations, columns=['Date', 'Allocation'])
+    return results_df, allocations_df, cumulative_returns_df
 
 def backtest_pso_dynamic(data, all_tickers, start_date, end_date, rebalance_period='3M'):
     results = []
