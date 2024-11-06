@@ -59,4 +59,4 @@ def backtest_pso(data, tickers, start_date, end_date, rebalance_period='3M', ini
         portfolio_value *= (1 + portfolio_return)
         portfolio_values.loc[date] = portfolio_value
 
-    return portfolio_values
+    return portfolio_values, current_weights

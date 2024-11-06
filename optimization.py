@@ -11,7 +11,7 @@ MAX_ACCEPTABLE_DRAWDOWN = -0.2
 
 # Particle Swarm Optimization (PSO) Algorithm
 class PSO:
-    def __init__(self, num_assets, num_particles=50, max_iter=200, w=0.5, c1=1.5, c2=1.5):
+    def __init__(self, num_assets, num_particles=50, max_iter=200, w=0.7, c1=1.8, c2=1.2):
         self.num_particles = num_particles  # Number of particles in the swarm
         self.particles = [self.Particle(num_assets) for _ in range(num_particles)]  # List of particles
         self.global_best_position = self.particles[0].position  # Global best position (best solution found)
