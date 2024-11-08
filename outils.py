@@ -233,3 +233,26 @@ def calculate_transaction_costs_and_taxes(prev_weights, current_weights, prices,
                 )
 
     return transaction_costs, tax_liability
+
+def plot_returns(portfolio_values, benchmark_cumulative_returns):
+    # Plot cumulative returns
+    plt.figure(figsize=(12, 6))
+    plt.plot(portfolio_values.index, portfolio_values.values, label='Optimized Portfolio')
+    plt.plot(benchmark_cumulative_returns.index, benchmark_cumulative_returns.values, label='S&P 500 Benchmark')
+    plt.title('Cumulative Returns: Portfolio vs. S&P 500')
+    plt.xlabel('Date')
+    plt.ylabel('Portfolio Value')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def plot_portfolio_composition(allocations_daily):
+    # Plot the allocations
+    plt.figure(figsize=(12, 6))
+    plt.plot(allocations_daily, label = allocations_daily.columns)
+    plt.title('Portfolio Allocations Over Time')
+    plt.xlabel('Date')
+    plt.ylabel('Allocation Percentage')
+    plt.legend(loc='upper left', bbox_to_anchor=(1.0, 1.0))
+    plt.tight_layout()
+    plt.show()

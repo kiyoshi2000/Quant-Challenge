@@ -8,6 +8,10 @@ from datetime import timedelta
 from backtest import *
 from metrics import PerformanceMetrics
 
+# TODO: adicionar stress testing em um períodod conturbado
+# ? melhor usar algo genético?
+
+
 # Main execution block
 if __name__ == "__main__":
     # Define parameters
@@ -18,7 +22,7 @@ if __name__ == "__main__":
            'EEM',  # Emerging Markets ETF
            'LQD']  # Investment Grade Corporate Bond ETF
     
-    start_date = '2020-01-01'
+    start_date = '2015-01-01'
     end_date = '2024-04-30'
     initial_investment = 100000
 
@@ -34,9 +38,16 @@ if __name__ == "__main__":
     benchmark_data.index = benchmark_data.index.tz_localize(None)
 
     # Run backtest with PSO optimization
-    portfolio_values, portfolio_allocations = backtest_pso(
+    portfolio_values, allocations_df = backtest_pso(
         data, tickers, start_date, end_date, rebalance_period='1ME', initial_investment=initial_investment
     )
+
+    # Ensure allocations_df index is datetime and sorted
+    allocations_df.index = pd.to_datetime(allocations_df.index)
+    allocations_df = allocations_df.sort_index()
+
+    # Extend allocations to daily frequency by forward-filling
+    allocations_daily = allocations_df.reindex(data.index, method='ffill')
 
     # Remove any NaN values
     portfolio_values = portfolio_values.dropna()
@@ -49,14 +60,24 @@ if __name__ == "__main__":
     benchmark_cumulative_returns = benchmark_cumulative_returns[benchmark_cumulative_returns.index.isin(portfolio_values.index)]
 
     # Plot cumulative returns
+    # plt.figure(figsize=(12, 6))
+    # plt.plot(portfolio_values.index, portfolio_values.values, label='Optimized Portfolio')
+    # plt.plot(benchmark_cumulative_returns.index, benchmark_cumulative_returns.values, label='S&P 500 Benchmark')
+    # plt.title('Cumulative Returns: Portfolio vs. S&P 500')
+    # plt.xlabel('Date')
+    # plt.ylabel('Portfolio Value')
+    # plt.legend()
+    # plt.grid(True)
+    # plt.show()
+
+    # Plot the allocations
     plt.figure(figsize=(12, 6))
-    plt.plot(portfolio_values.index, portfolio_values.values, label='Optimized Portfolio')
-    plt.plot(benchmark_cumulative_returns.index, benchmark_cumulative_returns.values, label='S&P 500 Benchmark')
-    plt.title('Cumulative Returns: Portfolio vs. S&P 500')
+    allocations_daily.plot.area(stacked=True, ax=plt.gca())  # Define o eixo atual para evitar conflito
+    plt.title('Portfolio Allocations Over Time')
     plt.xlabel('Date')
-    plt.ylabel('Portfolio Value')
-    plt.legend()
-    plt.grid(True)
+    plt.ylabel('Allocation Percentage')
+    plt.legend(loc='upper left', bbox_to_anchor=(1.0, 1.0))
+    plt.tight_layout()
     plt.show()
 
     # Calculate daily returns
