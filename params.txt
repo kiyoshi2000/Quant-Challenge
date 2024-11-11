@@ -1,0 +1,8 @@
+[I 2024-11-11 22:17:25,942] Trial 0 finished with value: 0.48009830643736 and parameters: {'num_particles': 46, 'max_iter': 67, 'w': 0.5011407090735363, 'c1': 2.5610786340272362, 'c2': 2.3803610888197486}. Best is trial 0 with value: 0.48009830643736.
+Melhores parâmetros encontrados:
+num_particles: 46
+max_iter: 67
+w: 0.5011407090735363
+c1: 2.5610786340272362
+c2: 2.3803610888197486
+Melhor valor do portfólio: 0.48009830643736

@@ -6,13 +6,11 @@ import matplotlib.pyplot as plt
 from datetime import timedelta
 from scipy.stats import norm
 from transaction import TransactionCostCalculator, TaxCalculator
-
-MAX_ACCEPTABLE_RISK = 0.1
-MAX_ACCEPTABLE_DRAWDOWN = -0.2 
+from outils import *
 
 # Particle Swarm Optimization (PSO) Algorithm
 class PSO:
-    def __init__(self, fitness_function, num_assets, num_particles=30, max_iter=100, w=1, c1=2, c2=1.5):
+    def __init__(self, num_assets, num_particles=30, max_iter=67, w=0.5, c1=2.56, c2=2.38):
         self.num_particles = num_particles  # Number of particles in the swarm
         self.particles = [self.Particle(num_assets) for _ in range(num_particles)]  # List of particles
         self.global_best_position = self.particles[0].position  # Global best position (best solution found)
@@ -21,7 +19,6 @@ class PSO:
         self.w = w      # Inertia weight
         self.c1 = c1    # Cognitive coefficient (particle's own experience)
         self.c2 = c2    # Social coefficient (swarm's experience)
-        self.fitness_function = fitness_function
 
     class Particle:
         def __init__(self, num_assets):
@@ -43,8 +40,13 @@ class PSO:
                 
                 # Calculate fitness of the particle
                 fitness = fitness_function(
-                    weights=particle.position, returns=returns, cov_matrix=cov_matrix, prev_weights=prev_weights, portfolio_value=portfolio_value, portfolio_values=portfolio_values,
-                    method=self.fitness_function,
+                    weights=particle.position,
+                    returns=returns,
+                    cov_matrix=cov_matrix,
+                    prev_weights=prev_weights,
+                    portfolio_value=portfolio_value,
+                    portfolio_values=portfolio_values,
+                    **kwargs
                 )
 
                 # Update personal best if current fitness is better
@@ -64,32 +66,41 @@ class PSO:
                 particle.velocity = inertia + cognitive + social
                 particle.position += particle.velocity
 
-                # # Impose allocation constraints
-                # if prev_weights is not None:
-                #     # Limit changes to within ±10% of previous weights
-                #     particle.position = np.clip(particle.position, prev_weights - 0.3, prev_weights + 0.3)
+                # Impose allocation constraints
+                if prev_weights is not None:
+                    # Limit changes to within ±10% of previous weights
+                    particle.position = np.clip(particle.position, prev_weights - 0.3, prev_weights + 0.3)
 
                 # Ensure weights are between 0 and 1
-                particle.position = np.clip(particle.position, 0, 0.75)
+                particle.position = np.clip(particle.position, 0, 0.5)
                 # Normalize weights to sum to 1
                 particle.position /= np.sum(particle.position)
 
         return self.global_best_position
     
-def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value, portfolio_values, transaction_calculator=TransactionCostCalculator, method='custom', **kwargs):
+def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value, portfolio_values, 
+                    transaction_calculator=TransactionCostCalculator, **kwargs):
     """
-    Calculate the fitness of a portfolio based on the specified method.
+    Calculate the fitness of a portfolio based on the specified method with normalized metrics.
 
     Parameters:
     - weights: np.array of portfolio weights.
     - returns: pd.DataFrame of historical returns.
     - cov_matrix: pd.DataFrame of the covariance matrix of returns.
+    - prev_weights: np.array of previous portfolio weights.
+    - portfolio_value: Current portfolio value.
+    - portfolio_values: pd.Series of portfolio values over time.
+    - transaction_calculator: Instance to calculate transaction costs.
     - method: String specifying the method ('sharpe', 'sortino', 'cvar', 'max_drawdown', 'custom').
+    - scaling_factors: Dict with scaling factors for normalization.
     - **kwargs: Additional arguments required for specific methods.
 
     Returns:
-    - fitness: Calculated fitness value (lower is better).
+    - fitness: Calculated fitness value (higher is better).
     """
+
+    scaling_factors = load_scaling_factors()
+
     # Ensure weights are a numpy array
     weights = np.array(weights)
 
@@ -114,12 +125,11 @@ def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value
     w_concentration = kwargs.get('w_concentration', -0.0)
     w_portfolio_volatility = kwargs.get('w_portfolio_volatility', -1.0)
 
-    # Calculando métricas de momento e retorno à média
-    # Momento: Média dos retornos em uma janela recente
+    # Calculando métricas de momentum e retorno à média
     momentum_window = kwargs.get('momentum_window', 63)  # 3 meses
-    momentum = returns.rolling(window=momentum_window).mean().iloc[-1]
+    momentum = calculate_momentum(returns, window=momentum_window).iloc[-1]
 
-    # Cálculo da Deviación do Portfólio
+    # Cálculo do desvio do portfólio
     deviation = calculate_portfolio_deviation(portfolio_values)
 
     # Calculate additional metrics
@@ -151,19 +161,31 @@ def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value
     downside_deviation = np.sqrt(np.mean(downside_returns**2)) * np.sqrt(252)
     sortino_ratio = (expected_return - risk_free_rate) / downside_deviation
 
-    # Fitness function combining multiple metrics
-    fitness = (w_return * expected_return +
-                w_momentum * momentum.sum() +  # Soma dos momentos dos ativos
-                w_deviation * deviation + 
-                w_sortino * sortino_ratio + 
-                w_portfolio_volatility * portfolio_volatility + 
-                w_cvar * (-cvar) +  # Minimizar cvar
-                w_drawdown * (-max_drawdown) +  # Minimizar drawdown
-                w_concentration * (concentration) +  # Minimizar concentração
-                w_transaction_cost * (transaction_cost)) # Minimizar custos de transação
+    # Normalizar as métricas
+    normalized_expected_return = expected_return / scaling_factors.get('expected_return', 1)
+    normalized_momentum = momentum.sum() / scaling_factors.get('momentum', 1)
+    normalized_deviation = deviation / scaling_factors.get('deviation', 1)
+    normalized_sortino = sortino_ratio / scaling_factors.get('sortino_ratio', 1)
+    normalized_portfolio_volatility = portfolio_volatility / scaling_factors.get('portfolio_volatility', 1)
+    normalized_cvar = cvar / scaling_factors.get('cvar', 1)
+    normalized_max_drawdown = max_drawdown / scaling_factors.get('max_drawdown', 1)
+    normalized_concentration = concentration / scaling_factors.get('concentration', 1)
+    normalized_transaction_cost = transaction_cost / scaling_factors.get('transaction_cost', 1)
+
+    # Fitness function combinando métricas normalizadas
+    fitness = (
+        w_return * normalized_expected_return +
+        w_momentum * normalized_momentum +  # Soma dos momentos dos ativos
+        w_deviation * normalized_deviation + 
+        w_sortino * normalized_sortino + 
+        w_portfolio_volatility * normalized_portfolio_volatility + 
+        w_cvar * (-normalized_cvar) +  # Minimizar CVaR
+        w_drawdown * (-normalized_max_drawdown) +  # Minimizar drawdown
+        w_concentration * normalized_concentration +  # Minimizar concentração
+        w_transaction_cost * normalized_transaction_cost  # Minimizar custos de transação
+    )
 
     return fitness
-
 
 def calculate_cvar(returns, alpha=0.95):
     """
@@ -184,8 +206,19 @@ def calculate_cvar(returns, alpha=0.95):
     return cvar
 
 # Taxa de Retorno (Return Rate): Retorno acumulado em um período específico.
-def calculate_momentum(returns, window=63):  # 63 dias = ~3 meses
-    momentum = returns.rolling(window=window).mean()
+def calculate_momentum(returns, window=63):  # 63 dias ≈ 3 meses
+    """
+    Calcula o retorno acumulado (momentum) sobre uma janela de tempo específica.
+
+    Parameters:
+    - returns: pd.DataFrame ou pd.Series de retornos diários.
+    - window: Número de períodos (dias) para calcular o momentum.
+
+    Returns:
+    - momentum: pd.DataFrame ou pd.Series com o retorno acumulado.
+    """
+    # Calcula o retorno acumulado multiplicando os retornos diários
+    momentum = (1 + returns).rolling(window=window).apply(np.prod, raw=True) - 1
     return momentum
 
 # Índice de Força Relativa (RSI - Relative Strength Index): Mede a velocidade e a mudança dos movimentos de preço.
@@ -210,7 +243,7 @@ def calculate_bollinger_bands(prices, window=20, num_std=2):
     lower_band = rolling_mean - (rolling_std * num_std)
     return upper_band, lower_band
 
-def calculate_portfolio_deviation(portfolio_values, window=252):
+def calculate_portfolio_deviation(portfolio_values, window=90):
     """
     Calcula a porcentagem de desvio do portfólio em relação à sua média móvel.
     

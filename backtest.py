@@ -4,7 +4,8 @@ from portfolio import Portfolio
 from transaction import TransactionCostCalculator, TaxCalculator
 from optimization import PSO
 
-def backtest_pso(data, tickers, start_date, end_date, fitness_function, rebalance_period='1ME', initial_investment=1_000_000, **kwargs):
+def backtest_pso(data, tickers, start_date, end_date, rebalance_period='1ME', initial_investment=1_000_000, 
+                pso_params=None, **kwargs):
     portfolio = Portfolio(tickers)
     transaction_calculator = TransactionCostCalculator()
     tax_calculator = TaxCalculator()
@@ -31,9 +32,19 @@ def backtest_pso(data, tickers, start_date, end_date, fitness_function, rebalanc
             cov_matrix = returns.cov()
 
             # Optimize portfolio
-            pso = PSO(num_particles=30, num_assets=len(tickers), fitness_function=fitness_function)
+            pso = PSO(
+                num_assets=len(tickers),
+                **(pso_params if pso_params else {})
+            )
 
-            best_pso_allocation = pso.optimize(returns=returns, cov_matrix=cov_matrix, prev_weights=current_weights, portfolio_value=portfolio_value, portfolio_values=portfolio_values, **kwargs)
+            best_pso_allocation = pso.optimize(
+                returns=returns,
+                cov_matrix=cov_matrix,
+                prev_weights=current_weights,
+                portfolio_value=portfolio_value,
+                portfolio_values=portfolio_values,
+                **kwargs
+            )
 
             # Calculate transaction costs and taxes
             desired_values = best_pso_allocation * portfolio_value # how much money will be allocated to each asset
@@ -55,6 +66,7 @@ def backtest_pso(data, tickers, start_date, end_date, fitness_function, rebalanc
 
             allocation_series = pd.Series(best_pso_allocation, index=tickers, name=date)
             portfolio_allocations.append(allocation_series)
+        print(date)
 
         # Calculate daily portfolio return
         daily_asset_returns = data.loc[date, tickers] / data.loc[previous_date, tickers] - 1

@@ -2,7 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.stats import norm
+import json
+import os
 
+PARAMS_FILE = 'best_pso_params.json'
+SCALING_FACTORS_FILE = 'scaling_factors.json'
 
 # Function to update holdings after transactions
 def update_holdings(shares_held, purchase_price, shares_change, current_price):
@@ -233,6 +237,75 @@ def calculate_transaction_costs_and_taxes(prev_weights, current_weights, prices,
                 )
 
     return transaction_costs, tax_liability
+
+def save_params(params, filename):
+    """
+    Salva os parâmetros em um arquivo JSON.
+    
+    Parameters:
+    - params: Dicionário de parâmetros a serem salvos.
+    - filename: Nome do arquivo onde os parâmetros serão salvos.
+    """
+    with open(filename, 'w') as f:
+        json.dump(params, f, indent=4)
+
+def load_params(filename):
+    """
+    Carrega os parâmetros de um arquivo JSON.
+    
+    Parameters:
+    - filename: Nome do arquivo de onde os parâmetros serão carregados.
+    
+    Returns:
+    - params: Dicionário de parâmetros carregados.
+    """
+    with open(filename, 'r') as f:
+        params = json.load(f)
+    return params
+
+def load_scaling_factors(filename=SCALING_FACTORS_FILE):
+    """
+    Carrega os fatores de escala de um arquivo JSON.
+    
+    Parameters:
+    - filename: Nome do arquivo de onde os fatores de escala serão carregados.
+    
+    Returns:
+    - scaling_factors: Dicionário com os fatores de escala.
+    """
+
+    # Verifica se os fatores de escala já existem
+    if os.path.exists(SCALING_FACTORS_FILE):
+        with open(filename, 'r') as f:
+            scaling_factors = json.load(f)
+    else:
+        # Defina os fatores de escala com base na análise histórica
+        scaling_factors = {
+            "expected_return": 0.3,            # 30% é considerado um retorno alto anualizado
+            "momentum": 0.5,                   # 50% é um retorno acumulado alto em 3 meses
+            "deviation": 0.1,                  # 10% desvio do portfólio em relação à média
+            "sortino_ratio": 3.0,              # Índice de Sortino alto
+            "portfolio_volatility": 0.4,       # 40% volatilidade anualizada
+            "cvar": 0.2,                        # 20% CVaR
+            "max_drawdown": 0.3,                # 30% máximo drawdown
+            "concentration": 1.0,               # Medida de concentração normalizada
+            "transaction_cost": 10000           # Custos de transação em unidades monetárias
+        }
+        # Salva os fatores de escala para uso futuro
+        save_scaling_factors(scaling_factors, SCALING_FACTORS_FILE)
+    
+    return scaling_factors
+
+def save_scaling_factors(scaling_factors, filename=SCALING_FACTORS_FILE):
+    """
+    Salva os fatores de escala em um arquivo JSON.
+    
+    Parameters:
+    - scaling_factors: Dicionário com os fatores de escala a serem salvos.
+    - filename: Nome do arquivo onde os fatores serão salvos.
+    """
+    with open(filename, 'w') as f:
+        json.dump(scaling_factors, f, indent=4)
 
 def plot_returns(portfolio_values, benchmark_cumulative_returns):
     # Plot cumulative returns

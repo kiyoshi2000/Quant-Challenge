@@ -1,0 +1,11 @@
+{
+    "expected_return": 0.3,
+    "momentum": 0.5,
+    "deviation": 0.1,
+    "sortino_ratio": 3.0,
+    "portfolio_volatility": 0.4,
+    "cvar": 0.2,
+    "max_drawdown": 0.3,
+    "concentration": 1.0,
+    "transaction_cost": 10000
+}
