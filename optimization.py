@@ -100,7 +100,6 @@ def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value
     expected_return = np.mean(portfolio_returns) * 252  # Annualized expected return
     portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix * 252, weights)))  # Annualized volatility
     risk_free_rate = kwargs.get('risk_free_rate', 0.02)
-    market_volatility = calculate_volatility(returns['market'], window=63)  # Usando uma janela de 3 meses
 
     # Custom fitness function combining multiple metrics
     # Weights for each metric (adjust as needed)
