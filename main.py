@@ -9,8 +9,8 @@ from backtest import *
 from metrics import PerformanceMetrics
 
 # TODO: adicionar stress testing em um períodod conturbado
+# TODO: adicionar a seleção de ações (agora as ações são sempre as mesmas, precisa escolher as ações a cada janela de tempo para poder fazer o backtesting e stress testing)
 # ? melhor usar algo genético?
-
 
 # Main execution block
 if __name__ == "__main__":
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     
     start_date = '2015-01-01'
     end_date = '2024-04-30'
-    initial_investment = 100000
+    initial_investment = 1_000_000
 
     # Download historical adjusted closing prices
     data = yf.download(tickers, start=start_date, end=end_date)['Adj Close']
@@ -60,15 +60,15 @@ if __name__ == "__main__":
     benchmark_cumulative_returns = benchmark_cumulative_returns[benchmark_cumulative_returns.index.isin(portfolio_values.index)]
 
     # Plot cumulative returns
-    # plt.figure(figsize=(12, 6))
-    # plt.plot(portfolio_values.index, portfolio_values.values, label='Optimized Portfolio')
-    # plt.plot(benchmark_cumulative_returns.index, benchmark_cumulative_returns.values, label='S&P 500 Benchmark')
-    # plt.title('Cumulative Returns: Portfolio vs. S&P 500')
-    # plt.xlabel('Date')
-    # plt.ylabel('Portfolio Value')
-    # plt.legend()
-    # plt.grid(True)
-    # plt.show()
+    plt.figure(figsize=(12, 6))
+    plt.plot(portfolio_values.index, portfolio_values.values, label='Optimized Portfolio')
+    plt.plot(benchmark_cumulative_returns.index, benchmark_cumulative_returns.values, label='S&P 500 Benchmark')
+    plt.title('Cumulative Returns: Portfolio vs. S&P 500')
+    plt.xlabel('Date')
+    plt.ylabel('Portfolio Value')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
     # Plot the allocations
     plt.figure(figsize=(12, 6))

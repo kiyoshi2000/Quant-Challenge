@@ -33,7 +33,7 @@ def backtest_pso(data, tickers, start_date, end_date, rebalance_period='3M', ini
 
             # Optimize portfolio
             pso = PSO(num_particles=30, num_assets=len(tickers), fitness_function=fitness_function)
-            best_pso_allocation = pso.optimize(returns=returns, cov_matrix=cov_matrix, prev_weights=prev_weights)
+            best_pso_allocation = pso.optimize(returns=returns, cov_matrix=cov_matrix, prev_weights=prev_weights, portfolio_value=portfolio_value)
 
             # Calculate transaction costs and taxes
             desired_values = best_pso_allocation * portfolio_value # how much money will be allocated to each asset
