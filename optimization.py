@@ -22,6 +22,7 @@ class PSO:
         self.c1 = c1    # Cognitive coefficient (particle's own experience)
         self.c2 = c2    # Social coefficient (swarm's experience)
         self.fitness_function = fitness_function
+
     class Particle:
         def __init__(self, num_assets):
             self.position = np.random.random(num_assets)  # Particle's position (portfolio weights)
@@ -30,7 +31,7 @@ class PSO:
             self.best_position = np.copy(self.position)   # Particle's best known position
             self.best_fitness = -np.inf                   # Particle's best known fitness
 
-    def optimize(self, returns, cov_matrix, portfolio_value, prev_weights=None):
+    def optimize(self, returns, cov_matrix, portfolio_value, prev_weights):
         """
         Optimize the portfolio weights using PSO.
         """
@@ -83,7 +84,7 @@ class PSO:
 
         return self.global_best_position
     
-def fitness_function(weights, returns, cov_matrix, transaction_calculator=TransactionCostCalculator, prev_weights=None, portfolio_value=1.0, method='custom', **kwargs):
+def fitness_function(weights, returns, cov_matrix, prev_weights, transaction_calculator=TransactionCostCalculator, portfolio_value=1.0, method='custom', **kwargs):
     """
     Calculate the fitness of a portfolio based on the specified method.
 
