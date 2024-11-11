@@ -10,6 +10,10 @@ from metrics import PerformanceMetrics
 
 # TODO: adicionar stress testing em um períodod conturbado
 # TODO: adicionar a seleção de ações (agora as ações são sempre as mesmas, precisa escolher as ações a cada janela de tempo para poder fazer o backtesting e stress testing)
+# TODO: acho que a melhor estratégia é, em cada janela de tempo, identificar diferentes classes de ativos que iremos usar, em momentos de crise, priorizamos aqueles com baixa volatilidade (tipo alguma renda fixa) e nos momentos de alta valorizamos algo mais arriscado (como alguma ação)
+# TODO: adicionar algo de retorno à média no cálculo do fitness pode ser interessante (se uma ação está acima da média, penalizar ela)
+# ! não sei se o cálculo do retorno tá certo. o pso está acima do sp500 em todos os anos, mas o retorno final é menor
+# ! acho que precisa 
 # ? melhor usar algo genético?
 
 # Main execution block

@@ -12,7 +12,7 @@ MAX_ACCEPTABLE_DRAWDOWN = -0.2
 
 # Particle Swarm Optimization (PSO) Algorithm
 class PSO:
-    def __init__(self, fitness_function, num_assets, num_particles=30, max_iter=100, w=1, c1=2, c2=1.2):
+    def __init__(self, fitness_function, num_assets, num_particles=30, max_iter=100, w=0.5, c1=1.5, c2=1.5):
         self.num_particles = num_particles  # Number of particles in the swarm
         self.particles = [self.Particle(num_assets) for _ in range(num_particles)]  # List of particles
         self.global_best_position = self.particles[0].position  # Global best position (best solution found)
@@ -75,16 +75,16 @@ class PSO:
                 # Impose allocation constraints
                 if prev_weights is not None:
                     # Limit changes to within ±10% of previous weights
-                    particle.position = np.clip(particle.position, prev_weights - 0.1, prev_weights + 0.1)
+                    particle.position = np.clip(particle.position, prev_weights - 0.3, prev_weights + 0.3)
 
                 # Ensure weights are between 0 and 1
-                particle.position = np.clip(particle.position, 0, 1)
+                particle.position = np.clip(particle.position, 0, 0.75)
                 # Normalize weights to sum to 1
                 particle.position /= np.sum(particle.position)
 
         return self.global_best_position
     
-def fitness_function(weights, returns, cov_matrix, prev_weights, transaction_calculator=TransactionCostCalculator, portfolio_value=1.0, method='custom', **kwargs):
+def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value, transaction_calculator=TransactionCostCalculator, method='custom', **kwargs):
     """
     Calculate the fitness of a portfolio based on the specified method.
 
@@ -140,10 +140,11 @@ def fitness_function(weights, returns, cov_matrix, prev_weights, transaction_cal
     elif method == 'custom':
         # Custom fitness function combining multiple metrics
         # Weights for each metric (adjust as needed)
-        w_return = kwargs.get('w_return', 1.0)
+        w_return = kwargs.get('w_return', 0.0)
         w_risk = kwargs.get('w_risk', 1.0)
-        w_transaction_cost = kwargs.get('w_transaction_cost', 1.0)
-        w_concentration = kwargs.get('w_concentration', -1.0)
+        w_transaction_cost = kwargs.get('w_transaction_cost', -0.5)
+        w_concentration = kwargs.get('w_concentration', -1)
+        w_drawdown = kwargs.get('w_drawdown', -3.0)
 
         # Calculate additional metrics
         # CVaR
@@ -163,22 +164,29 @@ def fitness_function(weights, returns, cov_matrix, prev_weights, transaction_cal
         transaction_cost = transaction_calculator.calculate_total(shares_diff)
 
         # Maximum Drawdown
-        # cumulative_returns = (1 + portfolio_returns).cumprod()
-        # peak = cumulative_returns.expanding(min_periods=1).max()
-        # drawdown = (cumulative_returns - peak) / peak
-        # max_drawdown = drawdown.min()
-
+        cumulative_returns = (1 + portfolio_returns).cumprod()
+        peak = cumulative_returns.expanding(min_periods=1).max()
+        drawdown = (cumulative_returns - peak) / peak
+        max_drawdown = drawdown.min()
+        
         # Downside Deviation for Sortino Ratio
-        # target_return = kwargs.get('target_return', 0)
-        # downside_returns = np.minimum(0, portfolio_returns - target_return)
-        # downside_deviation = np.sqrt(np.mean(downside_returns**2)) * np.sqrt(252)
-        # sortino_ratio = (expected_return - risk_free_rate) / downside_deviation
+        target_return = kwargs.get('target_return', 0)
+        downside_returns = np.minimum(0, portfolio_returns - target_return)
+        downside_deviation = np.sqrt(np.mean(downside_returns**2)) * np.sqrt(252)
+        sortino_ratio = (expected_return - risk_free_rate) / downside_deviation
 
         # Fitness function combining multiple metrics
-        fitness = (w_concentration * concentration +
-                w_transaction_cost * transaction_cost +
-                w_risk * cvar -
-                w_return * expected_return)
+        # fitness = (w_concentration * concentration +
+        #         w_transaction_cost * transaction_cost +
+        #         w_risk * cvar +
+        #         #w_drawdown * max_drawdown +
+        #         w_return * sortino_ratio)
+
+        fitness = (-0.5 * concentration +
+                -0.5 * transaction_cost +
+                2 * cvar +
+                #w_drawdown * max_drawdown +
+                2 * expected_return)
 
     else:
         raise ValueError("Invalid method specified. Choose 'sharpe', 'sortino', 'cvar', 'max_drawdown', or 'custom'.")
@@ -200,8 +208,7 @@ def calculate_cvar(returns, alpha=0.95):
     # Ensure returns are sorted
     sorted_returns = np.sort(returns)
     index = int((1 - alpha) * len(sorted_returns))
-    # VaR at the given confidence level
-    var = sorted_returns[index]
     # CVaR is the average of losses beyond VaR
     cvar = -np.mean(sorted_returns[:index])
+    print(cvar)
     return cvar
