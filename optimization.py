@@ -31,7 +31,7 @@ class PSO:
             self.best_position = np.copy(self.position)   # Particle's best known position
             self.best_fitness = -np.inf                   # Particle's best known fitness
 
-    def optimize(self, returns, cov_matrix, portfolio_value, prev_weights):
+    def optimize(self, returns, cov_matrix, portfolio_value, portfolio_values, prev_weights, **kwargs):
         """
         Optimize the portfolio weights using PSO.
         """
@@ -43,16 +43,9 @@ class PSO:
                 
                 # Calculate fitness of the particle
                 fitness = fitness_function(
-                    weights=particle.position, returns=returns, cov_matrix=cov_matrix, prev_weights=prev_weights, portfolio_value=portfolio_value,
-                      method=self.fitness_function,
-                    w_return=+1.0,
-                    w_volatility=-0.0,
-                    w_cvar=-1.0,
-                    w_drawdown=-0.0,
-                    w_sortino=+0.0,
-                    alpha=0.95,
-                    target_return=0,
-                    risk_free_rate=0.02
+                    weights=particle.position, returns=returns, cov_matrix=cov_matrix, prev_weights=prev_weights, portfolio_value=portfolio_value, portfolio_values=portfolio_values,
+                    method=self.fitness_function,
+                    **kwargs
                 )
 
                 # Update personal best if current fitness is better
@@ -84,7 +77,7 @@ class PSO:
 
         return self.global_best_position
     
-def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value, transaction_calculator=TransactionCostCalculator, method='custom', **kwargs):
+def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value, portfolio_values, transaction_calculator=TransactionCostCalculator, method='custom', **kwargs):
     """
     Calculate the fitness of a portfolio based on the specified method.
 
@@ -107,9 +100,9 @@ def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value
     portfolio_returns = returns.dot(weights)
     expected_return = np.mean(portfolio_returns) * 252  # Annualized expected return
     portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix * 252, weights)))  # Annualized volatility
-
     risk_free_rate = kwargs.get('risk_free_rate', 0.02)
 
+    
     if method == 'sharpe':
         # Calculate Sharpe Ratio
         sharpe_ratio = (expected_return - risk_free_rate) / portfolio_volatility
@@ -140,11 +133,27 @@ def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value
     elif method == 'custom':
         # Custom fitness function combining multiple metrics
         # Weights for each metric (adjust as needed)
-        w_return = kwargs.get('w_return', 0.0)
-        w_risk = kwargs.get('w_risk', 1.0)
+        w_return = kwargs.get('w_return', 2.0)
+        w_momentum = kwargs.get('w_momentum', 0.0)
+        w_mean_reversion = kwargs.get('w_mean_reversion', 0.0)
+        w_deviation = kwargs.get('w_deviation', 0.0)
+
+        w_cvar = kwargs.get('w_cvar', -2.0)
+        w_drawdown = kwargs.get('w_drawdown', -0.0)
         w_transaction_cost = kwargs.get('w_transaction_cost', -0.5)
-        w_concentration = kwargs.get('w_concentration', -1)
-        w_drawdown = kwargs.get('w_drawdown', -3.0)
+        w_concentration = kwargs.get('w_concentration', -0.0)
+
+        # Calculando métricas de momento e retorno à média
+        # Momento: Média dos retornos em uma janela recente
+        momentum_window = kwargs.get('momentum_window', 63)  # 3 meses
+        momentum = returns.rolling(window=momentum_window).mean().iloc[-1]
+        
+        # Retorno à média: Volatilidade ou desvio padrão
+        volatility_window = kwargs.get('volatility_window', 63)  # 3 meses
+        volatility = returns.rolling(window=volatility_window).std().iloc[-1]
+
+        # Cálculo da Deviación do Portfólio
+        deviation = calculate_portfolio_deviation(portfolio_values)
 
         # Calculate additional metrics
         # CVaR
@@ -176,17 +185,14 @@ def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value
         sortino_ratio = (expected_return - risk_free_rate) / downside_deviation
 
         # Fitness function combining multiple metrics
-        # fitness = (w_concentration * concentration +
-        #         w_transaction_cost * transaction_cost +
-        #         w_risk * cvar +
-        #         #w_drawdown * max_drawdown +
-        #         w_return * sortino_ratio)
-
-        fitness = (-0.5 * concentration +
-                -0.5 * transaction_cost +
-                2 * cvar +
-                #w_drawdown * max_drawdown +
-                2 * expected_return)
+        fitness = (w_return * expected_return +
+                   w_momentum * momentum.sum() +  # Soma dos momentos dos ativos
+                   w_deviation * deviation + 
+                   w_mean_reversion * (-volatility.sum()) +  # Minimizar volatilidade como proxy para retorno à média
+                   w_cvar * (-cvar) +  # Minimizar cvar
+                   w_drawdown * (-max_drawdown) +  # Minimizar drawdown
+                   w_concentration * (concentration) +  # Minimizar concentração
+                   w_transaction_cost * (transaction_cost))  # Minimizar custos de transação
 
     else:
         raise ValueError("Invalid method specified. Choose 'sharpe', 'sortino', 'cvar', 'max_drawdown', or 'custom'.")
@@ -210,5 +216,46 @@ def calculate_cvar(returns, alpha=0.95):
     index = int((1 - alpha) * len(sorted_returns))
     # CVaR is the average of losses beyond VaR
     cvar = -np.mean(sorted_returns[:index])
-    print(cvar)
     return cvar
+
+# Taxa de Retorno (Return Rate): Retorno acumulado em um período específico.
+def calculate_momentum(returns, window=63):  # 63 dias = ~3 meses
+    momentum = returns.rolling(window=window).mean()
+    return momentum
+
+# Índice de Força Relativa (RSI - Relative Strength Index): Mede a velocidade e a mudança dos movimentos de preço.
+def calculate_rsi(prices, window=14):
+    delta = prices.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+# Desvio Padrão do Retorno (Volatilidade): Mede a dispersão dos retornos em relação à média.
+def calculate_volatility(returns, window=63):
+    volatility = returns.rolling(window=window).std()
+    return volatility
+
+# Bandas de Bollinger (Bollinger Bands): Usam médias móveis e desvios padrão para identificar níveis de sobrecompra ou sobrevenda.
+def calculate_bollinger_bands(prices, window=20, num_std=2):
+    rolling_mean = prices.rolling(window=window).mean()
+    rolling_std = prices.rolling(window=window).std()
+    upper_band = rolling_mean + (rolling_std * num_std)
+    lower_band = rolling_mean - (rolling_std * num_std)
+    return upper_band, lower_band
+
+def calculate_portfolio_deviation(portfolio_values, window=252):
+    """
+    Calcula a porcentagem de desvio do portfólio em relação à sua média móvel.
+    
+    Parâmetros:
+    - portfolio_values: pd.Series do valor do portfólio ao longo do tempo.
+    - window: Janela de tempo para calcular a média móvel (p.ex., 252 dias para 1 ano).
+    
+    Retorna:
+    - deviation: Valor percentual do desvio em relação à média móvel.
+    """
+    rolling_mean = portfolio_values.rolling(window=window).mean()
+    deviation = (portfolio_values.iloc[-1] - rolling_mean.iloc[-1]) / rolling_mean.iloc[-1]
+    return deviation

@@ -4,7 +4,7 @@ from portfolio import Portfolio
 from transaction import TransactionCostCalculator, TaxCalculator
 from optimization import PSO
 
-def backtest_pso(data, tickers, start_date, end_date, rebalance_period='3M', initial_investment=1_000_000, fitness_function='sharpe'):
+def backtest_pso(data, tickers, start_date, end_date, fitness_function, rebalance_period='1ME', initial_investment=1_000_000, **kwargs):
     portfolio = Portfolio(tickers)
     transaction_calculator = TransactionCostCalculator()
     tax_calculator = TaxCalculator()
@@ -32,7 +32,7 @@ def backtest_pso(data, tickers, start_date, end_date, rebalance_period='3M', ini
 
             # Optimize portfolio
             pso = PSO(num_particles=30, num_assets=len(tickers), fitness_function=fitness_function)
-            best_pso_allocation = pso.optimize(returns=returns, cov_matrix=cov_matrix, prev_weights=current_weights, portfolio_value=portfolio_value)
+            best_pso_allocation = pso.optimize(returns=returns, cov_matrix=cov_matrix, prev_weights=current_weights, portfolio_value=portfolio_value, portfolio_values=portfolio_values, **kwargs)
 
             # Calculate transaction costs and taxes
             desired_values = best_pso_allocation * portfolio_value # how much money will be allocated to each asset
