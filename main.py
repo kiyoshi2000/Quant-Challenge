@@ -9,6 +9,7 @@ from backtest import *
 from metrics import PerformanceMetrics
 
 # TODO: adicionar stress testing em um períodod conturbado
+# TODO: precisa pegar os valores certos de imposto e taxa de corretagem, além do risk free rate
 # TODO: adicionar a seleção de ações (agora as ações são sempre as mesmas, precisa escolher as ações a cada janela de tempo para poder fazer o backtesting e stress testing)
 # TODO: acho que a melhor estratégia é, em cada janela de tempo, identificar diferentes classes de ativos que iremos usar, em momentos de crise, priorizamos aqueles com baixa volatilidade (tipo alguma renda fixa) e nos momentos de alta valorizamos algo mais arriscado (como alguma ação)
 # TODO: adicionar algo de retorno à média no cálculo do fitness pode ser interessante (se uma ação está acima da média, penalizar ela)
