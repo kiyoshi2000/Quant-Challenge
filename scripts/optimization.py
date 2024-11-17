@@ -78,8 +78,8 @@ class PSO:
 
         return self.global_best_position
     
-def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value, portfolio_values, 
-                    transaction_calculator=TransactionCostCalculator, **kwargs):
+def fitness_function(weights, returns, prev_weights, portfolio_value, portfolio_values, 
+                    transaction_calculator=TransactionCostCalculator, cov_matrix=None, **kwargs):
     """
     Calculate the fitness of a portfolio based on the specified method with normalized metrics.
 
@@ -107,6 +107,7 @@ def fitness_function(weights, returns, cov_matrix, prev_weights, portfolio_value
     transaction_calculator = TransactionCostCalculator()
 
     # Calculate portfolio returns
+    # print(returns)
     portfolio_returns = returns.dot(weights)
     expected_return = np.mean(portfolio_returns) * 252  # Annualized expected return
     portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix * 252, weights)))  # Annualized volatility

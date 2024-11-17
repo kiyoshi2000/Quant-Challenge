@@ -321,38 +321,38 @@ if __name__ == "__main__":
     periods = [
         {
             "name": "crise_asiatica",
-            "start_date": '1997-07-01',
+            "start_date": '1996-07-01',
             "end_date": '1998-12-31'
         },
         {
             "name": "crise_russa",
-            "start_date": '1998-01-01',
+            "start_date": '1996-01-01',
             "end_date": '1999-12-31'
         },
         {
             "name": "crise_2008",
-            "start_date": '2007-01-01',
+            "start_date": '2006-01-01',
             "end_date": '2009-12-31'
         },
         {
             "name": "crise_europeia",
-            "start_date": '2010-01-01',
+            "start_date": '2009-01-01',
             "end_date": '2012-12-31'
         },
         {
             "name": "crise_chinesa",
-            "start_date": '2015-06-01',
+            "start_date": '2014-06-01',
             "end_date": '2016-12-31'
         },
         {
             "name": "covid",
-            "start_date": '2020-01-01',
+            "start_date": '2019-01-01',
             "end_date": '2020-12-31'
         },
         {
-            "name": "2015-presente",
-            "start_date": '2015-01-01',
-            "end_date": datetime.today().strftime('%Y-%m-%d')
+            "name": "presente",
+            "start_date": '2014-01-01',
+            "end_date": '2024-11-11'
         }
     ]
 

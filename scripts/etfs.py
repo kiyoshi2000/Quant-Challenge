@@ -39,53 +39,50 @@ def main():
     Processa os períodos de crise, baixa os dados e salva os resultados.
     """
     # Diretório de destino
-    DATA_DIR = '../data/stress_testing'
-
-    # Data atual
-    today = datetime.today().strftime('%Y-%m-%d')
+    DATA_DIR = '../data/etfs'
 
     # Configurações dos períodos de crise
     datasets = [
         {
             "tickers": ['GC=F', '^TNX', '^TYX'],
-            "start_date": '1997-07-01',
+            "start_date": '1996-07-01',
             "end_date": '1998-12-31',
             "prefix": 'crise_asiatica',
         },
         {
             "tickers": ['CHF=X', 'JPY=X', '^TNX', '^TYX'],
-            "start_date": '1998-01-01',
+            "start_date": '1996-01-01',
             "end_date": '1999-12-31',
             "prefix": 'crise_russa',
         },
         {
             "tickers": ['TLT', 'GLD', 'XLP'],
-            "start_date": '2007-01-01',
+            "start_date": '2006-01-01',
             "end_date": '2009-12-31',
             "prefix": 'crise_2008',
         },
         {
             "tickers": ['GLD', 'IEF', 'FXF'],
-            "start_date": '2010-01-01',
+            "start_date": '2009-01-01',
             "end_date": '2012-12-31',
             "prefix": 'crise_europeia',
         },
         {
             "tickers": ['GLD', 'TLT', 'XLU'],
-            "start_date": '2015-06-01',
+            "start_date": '2014-06-01',
             "end_date": '2016-12-31',
             "prefix": 'crise_chinesa',
         },
         {
             "tickers": ['BND', 'GLD', 'XLU'],
-            "start_date": '2020-01-01',
+            "start_date": '2019-01-01',
             "end_date": '2020-12-31',
             "prefix": 'covid',
         },
         {
             "tickers": ['TLT', 'GLD', 'IAU', 'TIP', 'XLP', 'XLU', 'XLV', 'FXY', 'FXF'],
-            "start_date": '2015-01-01',
-            "end_date": today,
+            "start_date": '2014-01-01',
+            "end_date": '2024-11-11',
             "prefix": '2015-presente',
         }
     ]

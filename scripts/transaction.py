@@ -11,7 +11,7 @@ class TaxCalculator:
         tax_liability = capital_gain * self.tax_rate if capital_gain > 0 else 0
         return tax_liability
 
-    def calculate_total(self, shares_diffs, prices, purchase_prices):
+    def old_calculate_total(self, shares_diffs, prices, purchase_prices):
         total_tax = 0.0
         for i, shares_change in enumerate(shares_diffs):
             if shares_change < 0:
@@ -19,6 +19,15 @@ class TaxCalculator:
                 current_price = prices[i]
                 purchase_price = purchase_prices[i]
                 total_tax += self.calculate(shares_sold, current_price, purchase_price)
+        return total_tax
+
+    def calculate_total(self, shares_diffs, prices, portfolio):
+        total_tax = 0.0
+        for ticker, shares_change in shares_diffs.items():
+            shares_sold = -shares_change
+            current_price = prices[ticker]
+            purchase_price = portfolio.purchase_prices[ticker]
+            total_tax += self.calculate(shares_sold, current_price, purchase_price)
         return total_tax
     
 class TransactionCostCalculator:
@@ -30,8 +39,14 @@ class TransactionCostCalculator:
         commission = max(self.commission_per_share * abs(shares_change), self.min_commission)
         return commission
 
-    def calculate_total(self, shares_diffs):
+    def old_calculate_total(self, shares_diffs):
         total_cost = 0.0
         for shares_change in shares_diffs:
+            total_cost += self.calculate(shares_change)
+        return total_cost
+
+    def calculate_total(self, shares_diffs):
+        total_cost = 0.0
+        for _, shares_change in shares_diffs.items():
             total_cost += self.calculate(shares_change)
         return total_cost
